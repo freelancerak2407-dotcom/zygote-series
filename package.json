@@ -1,0 +1,27 @@
+{
+  "name": "zygote-series",
+  "version": "1.0.0",
+  "description": "ZYGOTE - Medical Learning Platform for MBBS Students",
+  "private": true,
+  "workspaces": [
+    "backend",
+    "admin",
+    "frontend"
+  ],
+  "scripts": {
+    "dev:backend": "cd backend && npm run dev",
+    "dev:admin": "cd admin && npm run dev",
+    "dev:frontend": "cd frontend && npm start",
+    "install:all": "npm install && cd backend && npm install && cd ../admin && npm install && cd ../frontend && npm install",
+    "build:admin": "cd admin && npm run build",
+    "migrate": "cd backend && npm run migrate"
+  },
+  "keywords": [
+    "medical",
+    "education",
+    "mbbs",
+    "learning"
+  ],
+  "author": "ZYGOTE Team",
+  "license": "UNLICENSED"
+}
