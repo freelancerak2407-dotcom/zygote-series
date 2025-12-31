@@ -1,280 +1,119 @@
 const express = require('express');
 const router = express.Router();
-const db = require('../database/connection');
+const contentController = require('../controllers/contentController');
+const mcqController = require('../controllers/mcqController');
+const userController = require('../controllers/userController');
+const subscriptionController = require('../controllers/subscriptionController');
+const analyticsController = require('../controllers/analyticsController');
+const contentValidators = require('../validators/contentValidator');
+const mcqValidators = require('../validators/mcqValidator');
 const { verifyToken, requireRole } = require('../middleware/auth');
+const { uploadPDF, uploadImage, handleUploadError } = require('../middleware/uploadMiddleware');
 
 // All admin routes require authentication and admin/editor role
 router.use(verifyToken);
 router.use(requireRole('admin', 'editor'));
 
 // ==================== TRACKS ====================
-
-// Create track
-router.post('/tracks', async (req, res) => {
-    try {
-        const { name, description, yearNumber, displayOrder } = req.body;
-
-        const result = await db.query(`
-      INSERT INTO tracks (name, description, year_number, display_order, created_by)
-      VALUES ($1, $2, $3, $4, $5)
-      RETURNING *
-    `, [name, description, yearNumber, displayOrder, req.user.id]);
-
-        // Log activity
-        await db.query(`
-      INSERT INTO activity_logs (user_id, action, entity_type, entity_id, details)
-      VALUES ($1, $2, $3, $4, $5)
-    `, [req.user.id, 'TRACK_CREATED', 'track', result.rows[0].id, JSON.stringify({ name })]);
-
-        res.status(201).json({
-            success: true,
-            message: 'Track created successfully.',
-            data: result.rows[0]
-        });
-    } catch (error) {
-        console.error('Create track error:', error);
-        res.status(500).json({
-            success: false,
-            message: 'Failed to create track.'
-        });
-    }
-});
-
-// Update track
-router.put('/tracks/:id', async (req, res) => {
-    try {
-        const { id } = req.params;
-        const { name, description, yearNumber, displayOrder, isActive } = req.body;
-
-        const result = await db.query(`
-      UPDATE tracks
-      SET name = COALESCE($1, name),
-          description = COALESCE($2, description),
-          year_number = COALESCE($3, year_number),
-          display_order = COALESCE($4, display_order),
-          is_active = COALESCE($5, is_active),
-          updated_at = NOW()
-      WHERE id = $6
-      RETURNING *
-    `, [name, description, yearNumber, displayOrder, isActive, id]);
-
-        if (result.rows.length === 0) {
-            return res.status(404).json({
-                success: false,
-                message: 'Track not found.'
-            });
-        }
-
-        // Log activity
-        await db.query(`
-      INSERT INTO activity_logs (user_id, action, entity_type, entity_id, details)
-      VALUES ($1, $2, $3, $4, $5)
-    `, [req.user.id, 'TRACK_UPDATED', 'track', id, JSON.stringify(req.body)]);
-
-        res.json({
-            success: true,
-            message: 'Track updated successfully.',
-            data: result.rows[0]
-        });
-    } catch (error) {
-        console.error('Update track error:', error);
-        res.status(500).json({
-            success: false,
-            message: 'Failed to update track.'
-        });
-    }
-});
-
-// Delete track (soft delete)
-router.delete('/tracks/:id', requireRole('admin'), async (req, res) => {
-    try {
-        const { id } = req.params;
-
-        const result = await db.query(`
-      UPDATE tracks SET is_active = FALSE, updated_at = NOW()
-      WHERE id = $1
-      RETURNING *
-    `, [id]);
-
-        if (result.rows.length === 0) {
-            return res.status(404).json({
-                success: false,
-                message: 'Track not found.'
-            });
-        }
-
-        // Log activity
-        await db.query(`
-      INSERT INTO activity_logs (user_id, action, entity_type, entity_id)
-      VALUES ($1, $2, $3, $4)
-    `, [req.user.id, 'TRACK_DELETED', 'track', id]);
-
-        res.json({
-            success: true,
-            message: 'Track deleted successfully.'
-        });
-    } catch (error) {
-        console.error('Delete track error:', error);
-        res.status(500).json({
-            success: false,
-            message: 'Failed to delete track.'
-        });
-    }
-});
+router.post('/tracks', contentValidators.createTrack, contentController.createTrack);
+router.put('/tracks/:id', contentValidators.updateTrack, contentController.updateTrack);
+router.delete('/tracks/:id', requireRole('admin'), contentController.deleteTrack);
 
 // ==================== SUBJECTS ====================
-
-// Create subject
-router.post('/subjects', async (req, res) => {
-    try {
-        const { trackId, name, description, iconUrl, colorCode, displayOrder, isFreeTrial } = req.body;
-
-        const result = await db.query(`
-      INSERT INTO subjects (track_id, name, description, icon_url, color_code, display_order, is_free_trial, created_by)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-      RETURNING *
-    `, [trackId, name, description, iconUrl, colorCode, displayOrder, isFreeTrial || false, req.user.id]);
-
-        await db.query(`
-      INSERT INTO activity_logs (user_id, action, entity_type, entity_id, details)
-      VALUES ($1, $2, $3, $4, $5)
-    `, [req.user.id, 'SUBJECT_CREATED', 'subject', result.rows[0].id, JSON.stringify({ name })]);
-
-        res.status(201).json({
-            success: true,
-            message: 'Subject created successfully.',
-            data: result.rows[0]
-        });
-    } catch (error) {
-        console.error('Create subject error:', error);
-        res.status(500).json({
-            success: false,
-            message: 'Failed to create subject.'
-        });
-    }
-});
+router.get('/subjects', contentController.getAllSubjects);
+router.post('/subjects', contentValidators.createSubject, contentController.createSubject);
+router.put('/subjects/:id', contentValidators.updateSubject, contentController.updateSubject);
+router.delete('/subjects/:id', requireRole('admin'), contentController.deleteSubject);
 
 // ==================== TOPICS ====================
+router.get('/topics', contentController.getAllTopics);
+router.post('/topics', contentValidators.createTopic, contentController.createTopic);
+router.put('/topics/:id', contentValidators.updateTopic, contentController.updateTopic);
+router.delete('/topics/:id', requireRole('admin'), contentController.deleteTopic);
 
-// Create topic
-router.post('/topics', async (req, res) => {
+// ==================== TOPIC CONTENT ====================
+router.post('/topics/:id/notes', contentValidators.createNotes, contentController.createNotes);
+router.post('/topics/:id/summary', contentValidators.createSummary, contentController.createSummary);
+router.post('/topics/:id/mindmap', contentValidators.createMindMap, contentController.createMindMap);
+
+// ==================== MCQs ====================
+router.get('/mcqs', mcqController.getAllMCQs);
+router.post('/mcqs', mcqValidators.createMCQ, mcqController.createMCQ);
+router.post('/mcqs/bulk', mcqValidators.bulkCreateMCQs, mcqController.bulkCreateMCQs);
+router.put('/mcqs/:id', mcqValidators.updateMCQ, mcqController.updateMCQ);
+router.delete('/mcqs/:id', requireRole('admin'), mcqController.deleteMCQ);
+router.get('/mcqs/topic/:topicId/stats', mcqController.getTopicStats);
+
+// ==================== FILE UPLOADS ====================
+router.post('/upload/pdf', uploadPDF, handleUploadError, async (req, res) => {
     try {
-        const { subjectId, title, description, displayOrder, isFreeSample } = req.body;
-
-        const result = await db.query(`
-      INSERT INTO topics (subject_id, title, description, display_order, is_free_sample, created_by)
-      VALUES ($1, $2, $3, $4, $5, $6)
-      RETURNING *
-    `, [subjectId, title, description, displayOrder, isFreeSample || false, req.user.id]);
-
-        await db.query(`
-      INSERT INTO activity_logs (user_id, action, entity_type, entity_id, details)
-      VALUES ($1, $2, $3, $4, $5)
-    `, [req.user.id, 'TOPIC_CREATED', 'topic', result.rows[0].id, JSON.stringify({ title })]);
-
-        res.status(201).json({
-            success: true,
-            message: 'Topic created successfully.',
-            data: result.rows[0]
-        });
-    } catch (error) {
-        console.error('Create topic error:', error);
-        res.status(500).json({
-            success: false,
-            message: 'Failed to create topic.'
-        });
-    }
-});
-
-// ==================== CONTENT ====================
-
-// Create/Update notes
-router.post('/topics/:id/notes', async (req, res) => {
-    try {
-        const { id } = req.params;
-        const { content, contentType, pdfUrl } = req.body;
-
-        const result = await db.query(`
-      INSERT INTO notes (topic_id, content, content_type, pdf_url, created_by)
-      VALUES ($1, $2, $3, $4, $5)
-      RETURNING *
-    `, [id, content, contentType || 'markdown', pdfUrl, req.user.id]);
-
-        res.status(201).json({
-            success: true,
-            message: 'Notes created successfully.',
-            data: result.rows[0]
-        });
-    } catch (error) {
-        console.error('Create notes error:', error);
-        res.status(500).json({
-            success: false,
-            message: 'Failed to create notes.'
-        });
-    }
-});
-
-// Create MCQ
-router.post('/mcqs', async (req, res) => {
-    try {
-        const { topicId, question, optionA, optionB, optionC, optionD, correctAnswer, explanation, difficulty, displayOrder } = req.body;
-
-        const result = await db.query(`
-      INSERT INTO mcqs (topic_id, question, option_a, option_b, option_c, option_d, correct_answer, explanation, difficulty, display_order, created_by)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
-      RETURNING *
-    `, [topicId, question, optionA, optionB, optionC, optionD, correctAnswer, explanation, difficulty || 'moderate', displayOrder, req.user.id]);
-
-        res.status(201).json({
-            success: true,
-            message: 'MCQ created successfully.',
-            data: result.rows[0]
-        });
-    } catch (error) {
-        console.error('Create MCQ error:', error);
-        res.status(500).json({
-            success: false,
-            message: 'Failed to create MCQ.'
-        });
-    }
-});
-
-// Bulk create MCQs
-router.post('/mcqs/bulk', async (req, res) => {
-    try {
-        const { mcqs } = req.body;
-
-        if (!Array.isArray(mcqs) || mcqs.length === 0) {
+        if (!req.file) {
             return res.status(400).json({
                 success: false,
-                message: 'MCQs array is required.'
+                message: 'No file uploaded',
             });
         }
 
-        const created = [];
+        const uploadService = require('../services/uploadService');
+        const result = await uploadService.uploadPDF(req.file);
 
-        for (const mcq of mcqs) {
-            const result = await db.query(`
-        INSERT INTO mcqs (topic_id, question, option_a, option_b, option_c, option_d, correct_answer, explanation, difficulty, display_order, created_by)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
-        RETURNING *
-      `, [mcq.topicId, mcq.question, mcq.optionA, mcq.optionB, mcq.optionC, mcq.optionD, mcq.correctAnswer, mcq.explanation, mcq.difficulty || 'moderate', mcq.displayOrder, req.user.id]);
-
-            created.push(result.rows[0]);
-        }
-
-        res.status(201).json({
+        res.json({
             success: true,
-            message: `${created.length} MCQs created successfully.`,
-            data: created
+            message: 'PDF uploaded successfully',
+            data: {
+                url: result.url,
+                key: result.key,
+            },
         });
     } catch (error) {
-        console.error('Bulk create MCQs error:', error);
+        console.error('PDF upload error:', error);
         res.status(500).json({
             success: false,
-            message: 'Failed to create MCQs.'
+            message: error.message || 'Failed to upload PDF',
         });
     }
 });
+
+router.post('/upload/image', uploadImage, handleUploadError, async (req, res) => {
+    try {
+        if (!req.file) {
+            return res.status(400).json({
+                success: false,
+                message: 'No file uploaded',
+            });
+        }
+
+        const uploadService = require('../services/uploadService');
+        const result = await uploadService.uploadImage(req.file);
+
+        res.json({
+            success: true,
+            message: 'Image uploaded successfully',
+            data: {
+                url: result.url,
+                key: result.key,
+            },
+        });
+    } catch (error) {
+        console.error('Image upload error:', error);
+        res.status(500).json({
+            success: false,
+            message: error.message || 'Failed to upload image',
+        });
+    }
+});
+
+// ==================== USER MANAGEMENT ====================
+router.get('/users', userController.getAllUsers);
+router.delete('/users/:id', requireRole('admin'), userController.deactivateUser);
+
+// ==================== SUBSCRIPTIONS ====================
+router.get('/subscriptions', subscriptionController.getAllSubscriptions);
+router.get('/subscriptions/stats', subscriptionController.getSubscriptionStats);
+
+// ==================== ANALYTICS ====================
+router.get('/analytics/platform', analyticsController.getPlatformStats);
+router.get('/analytics/topic/:topicId', analyticsController.getTopicStats);
+router.get('/analytics/logs', analyticsController.getActivityLogs);
 
 module.exports = router;
