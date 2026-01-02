@@ -15,7 +15,7 @@ export default function SubjectsPage() {
         name: '',
         description: '',
         colorCode: '#2563EB',
-        isFree Trial: false,
+        isFreeTrial: false,
         displayOrder: 1,
     });
 
